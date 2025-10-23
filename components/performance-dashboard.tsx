@@ -2,50 +2,41 @@
 
 import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
-import { Zap, CheckCircle2 } from "lucide-react"
+import { Zap, Check } from "lucide-react"
 import { cn } from "@/lib/utils"
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
-interface BenchmarkResult {
+interface BenchmarkRun {
   id: number
   experimentId: string
   prompt: string
   timestamp: string
-  native: {
-    executionTime: number
-    tokenCount: number
-    memoryUsage: number
-  }
-  optimized: {
-    executionTime: number
-    tokenCount: number
-    memoryUsage: number
-  }
+  kernelType: "Native" | "Optimized"
+  tokensPerSecond: number
+  validationAccuracy: number
+  peakGpuMemoryMb: number
+  runToRunVariance: number
+  throughputPerDollar: number
 }
 
 export function PerformanceDashboard() {
-  const [results, setResults] = useState<BenchmarkResult[]>([])
-  const [latestResult, setLatestResult] = useState<BenchmarkResult | null>(null)
-  const [chartFilter, setChartFilter] = useState<"last5" | "last10" | "all">("last5")
+  const [runs, setRuns] = useState<BenchmarkRun[]>([])
 
   useEffect(() => {
-    const loadResults = () => {
-      const storedResults: BenchmarkResult[] = JSON.parse(localStorage.getItem("benchmark-results") || "[]")
-      setResults(storedResults)
-      if (storedResults.length > 0) {
-        setLatestResult(storedResults[storedResults.length - 1])
-      }
+    const loadRuns = () => {
+      const storedRuns: BenchmarkRun[] = JSON.parse(localStorage.getItem("benchmark-runs") || "[]")
+      setRuns(storedRuns)
     }
 
-    loadResults()
+    loadRuns()
 
     // Refresh every 3 seconds
-    const interval = setInterval(loadResults, 3000)
+    const interval = setInterval(loadRuns, 3000)
     return () => clearInterval(interval)
   }, [])
 
-  if (!latestResult) {
+  if (runs.length === 0) {
     return (
       <Card className="p-12 text-center border-border/50 shadow-sm">
         <div className="space-y-4">
@@ -53,7 +44,7 @@ export function PerformanceDashboard() {
           <div>
             <h3 className="text-xl font-semibold">No Benchmark Results Yet</h3>
             <p className="text-muted-foreground mt-2">
-              Run your first benchmark to see performance comparisons between Native and Optimized Kernels
+              Run your first benchmark to see performance comparisons between Native Code and Optimized Code
             </p>
           </div>
         </div>
@@ -61,224 +52,225 @@ export function PerformanceDashboard() {
     )
   }
 
-  const metrics = [
-    {
-      id: "executionTime",
-      label: "Execution Time",
-      unit: "ms",
-      native: latestResult.native.executionTime * 1000,
-      optimized: latestResult.optimized.executionTime * 1000,
-      lowerIsBetter: true,
-      decimals: 0,
-    },
-    {
-      id: "tokenCount",
-      label: "Token Count",
-      unit: "tokens",
-      native: latestResult.native.tokenCount,
-      optimized: latestResult.optimized.tokenCount,
-      lowerIsBetter: true,
-      decimals: 0,
-    },
-    {
-      id: "memoryUsage",
-      label: "Memory Usage",
-      unit: "MB",
-      native: latestResult.native.memoryUsage,
-      optimized: latestResult.optimized.memoryUsage,
-      lowerIsBetter: true,
-      decimals: 1,
-    },
-  ]
+  const lastNativeRun = [...runs].reverse().find((run) => run.kernelType === "Native")
+  const lastOptimizedRun = [...runs].reverse().find((run) => run.kernelType === "Optimized")
 
-  const getBetterValue = (nativeVal: number, optimizedVal: number, lowerIsBetter: boolean) => {
-    if (lowerIsBetter) {
-      return optimizedVal < nativeVal ? "optimized" : "native"
+  const chartData = []
+  if (lastNativeRun && lastOptimizedRun) {
+    // Normalize values to 0-100 scale for better visualization
+    const normalizeSpeed = (val: number) => Math.min((val / 300) * 100, 100)
+    const normalizeAccuracy = (val: number) => val * 100
+    const normalizeMemory = (val: number) => Math.max(100 - (val / 1500) * 100, 0) // Inverted: lower is better
+    const normalizeStability = (val: number) => Math.max(100 - (val / 0.2) * 100, 0) // Inverted: lower is better
+    const normalizeCost = (val: number) => Math.min((val / 100) * 100, 100)
+
+    chartData.push(
+      {
+        metric: "Speed",
+        Native: normalizeSpeed(lastNativeRun.tokensPerSecond),
+        Optimized: normalizeSpeed(lastOptimizedRun.tokensPerSecond),
+      },
+      {
+        metric: "Accuracy",
+        Native: normalizeAccuracy(lastNativeRun.validationAccuracy),
+        Optimized: normalizeAccuracy(lastOptimizedRun.validationAccuracy),
+      },
+      {
+        metric: "Memory Efficiency",
+        Native: normalizeMemory(lastNativeRun.peakGpuMemoryMb),
+        Optimized: normalizeMemory(lastOptimizedRun.peakGpuMemoryMb),
+      },
+      {
+        metric: "Stability",
+        Native: normalizeStability(lastNativeRun.runToRunVariance),
+        Optimized: normalizeStability(lastOptimizedRun.runToRunVariance),
+      },
+      {
+        metric: "Cost Efficiency",
+        Native: normalizeCost(lastNativeRun.throughputPerDollar),
+        Optimized: normalizeCost(lastOptimizedRun.throughputPerDollar),
+      },
+    )
+  }
+
+  const metricsComparison = []
+  if (lastNativeRun && lastOptimizedRun) {
+    metricsComparison.push(
+      {
+        name: "Speed",
+        technicalName: "tokens_per_second",
+        nativeValue: lastNativeRun.tokensPerSecond,
+        optimizedValue: lastOptimizedRun.tokensPerSecond,
+        unit: "",
+        higherIsBetter: true,
+        format: (val: number) => val.toFixed(1),
+      },
+      {
+        name: "Accuracy",
+        technicalName: "validation_accuracy",
+        nativeValue: lastNativeRun.validationAccuracy,
+        optimizedValue: lastOptimizedRun.validationAccuracy,
+        unit: "%",
+        higherIsBetter: true,
+        format: (val: number) => (val * 100).toFixed(2),
+      },
+      {
+        name: "Memory Efficiency",
+        technicalName: "peak_gpu_memory_mb",
+        nativeValue: lastNativeRun.peakGpuMemoryMb,
+        optimizedValue: lastOptimizedRun.peakGpuMemoryMb,
+        unit: " MB",
+        higherIsBetter: false,
+        format: (val: number) => val.toFixed(1),
+      },
+      {
+        name: "Stability",
+        technicalName: "run_to_run_variance",
+        nativeValue: lastNativeRun.runToRunVariance,
+        optimizedValue: lastOptimizedRun.runToRunVariance,
+        unit: "",
+        higherIsBetter: false,
+        format: (val: number) => val.toFixed(4),
+      },
+      {
+        name: "Cost Efficiency",
+        technicalName: "throughput_per_dollar",
+        nativeValue: lastNativeRun.throughputPerDollar,
+        optimizedValue: lastOptimizedRun.throughputPerDollar,
+        unit: "",
+        higherIsBetter: true,
+        format: (val: number) => val.toFixed(1),
+      },
+    )
+  }
+
+  const getBetterCode = (metric: (typeof metricsComparison)[0]) => {
+    if (metric.higherIsBetter) {
+      return metric.optimizedValue > metric.nativeValue ? "Optimized" : "Native"
+    } else {
+      return metric.optimizedValue < metric.nativeValue ? "Optimized" : "Native"
     }
-    return optimizedVal > nativeVal ? "optimized" : "native"
   }
 
-  const getFilteredResults = () => {
-    if (chartFilter === "last5") return results.slice(-5)
-    if (chartFilter === "last10") return results.slice(-10)
-    return results
+  const calculateImprovement = (metric: (typeof metricsComparison)[0]) => {
+    const { nativeValue, optimizedValue, higherIsBetter } = metric
+    if (higherIsBetter) {
+      return ((optimizedValue - nativeValue) / nativeValue) * 100
+    } else {
+      return ((nativeValue - optimizedValue) / nativeValue) * 100
+    }
   }
-
-  const chartData = getFilteredResults().map((result, index) => ({
-    run: `Run ${index + 1}`,
-    native: result.native.executionTime * 1000,
-    optimized: result.optimized.executionTime * 1000,
-  }))
 
   return (
     <div className="space-y-8">
-      {results.length > 1 && (
+      {runs.length > 1 && chartData.length > 0 && (
         <div>
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold mb-2">Benchmark History</h2>
-              <p className="text-muted-foreground">Execution time comparison across multiple runs</p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setChartFilter("last5")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                  chartFilter === "last5"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80",
-                )}
-              >
-                Last 5 Runs
-              </button>
-              <button
-                onClick={() => setChartFilter("last10")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                  chartFilter === "last10"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80",
-                )}
-              >
-                Last 10 Runs
-              </button>
-              <button
-                onClick={() => setChartFilter("all")}
-                className={cn(
-                  "px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                  chartFilter === "all"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80",
-                )}
-              >
-                All Runs
-              </button>
-            </div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-2">Code Performance Overview</h2>
+            <p className="text-muted-foreground">Last Run Comparison</p>
           </div>
 
           <Card className="p-6 border-border/40 shadow-lg bg-card">
             <ChartContainer
               config={{
-                native: {
-                  label: "Native Kernel",
+                Native: {
+                  label: "Native Code",
                   color: "hsl(var(--chart-1))",
                 },
-                optimized: {
-                  label: "Optimized Kernel",
+                Optimized: {
+                  label: "Optimized Code",
                   color: "hsl(var(--chart-2))",
                 },
               }}
               className="h-[220px] w-full"
             >
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorNative" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-1))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-1))" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="colorOptimized" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--chart-2))" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="hsl(var(--chart-2))" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
+                <BarChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                  <XAxis dataKey="run" className="text-xs" stroke="hsl(var(--muted-foreground))" />
-                  <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" />
+                  <XAxis dataKey="metric" className="text-xs" stroke="hsl(var(--muted-foreground))" />
+                  <YAxis className="text-xs" stroke="hsl(var(--muted-foreground))" domain={[0, 100]} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Area
-                    type="monotone"
-                    dataKey="native"
-                    stroke="hsl(var(--chart-1))"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorNative)"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="optimized"
-                    stroke="hsl(var(--chart-2))"
-                    strokeWidth={2}
-                    fillOpacity={1}
-                    fill="url(#colorOptimized)"
-                  />
-                </AreaChart>
+                  <Legend />
+                  <Bar dataKey="Native" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Optimized" fill="hsl(var(--chart-2))" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             </ChartContainer>
           </Card>
         </div>
       )}
 
-      <div>
-        <div className="mb-6">
-          <h2 className="text-2xl font-semibold mb-2">Performance Metrics</h2>
-          <p className="text-muted-foreground">Detailed comparison of Native vs Optimized Kernel performance</p>
-        </div>
-
-        <Card className="overflow-hidden border-border/40 shadow-lg bg-card">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border/60 bg-muted/40">
-                  <th className="text-left p-5 font-semibold text-sm text-foreground/90">Metric Name</th>
-                  <th className="text-right p-5 font-semibold text-sm text-foreground/90">Native Kernel</th>
-                  <th className="text-right p-5 font-semibold text-sm text-foreground/90">Optimized Kernel</th>
-                  <th className="text-right p-5 font-semibold text-sm text-foreground/90">Improvement</th>
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((metric, index) => {
-                  const difference = metric.native - metric.optimized
-                  const improvement = ((difference / metric.native) * 100).toFixed(1)
-                  const winner = getBetterValue(metric.native, metric.optimized, metric.lowerIsBetter)
-                  const isOptimizedBetter = winner === "optimized"
-
-                  return (
-                    <tr
-                      key={metric.id}
-                      className={cn(
-                        "border-b border-border/40 hover:bg-muted/20 transition-colors",
-                        index === metrics.length - 1 && "border-b-0",
-                      )}
-                    >
-                      <td className="p-5">
-                        <span className="font-medium text-[15px]">{metric.label}</span>
-                      </td>
-                      <td className="text-right p-5">
-                        <div className="flex items-center justify-end gap-2">
-                          {!isOptimizedBetter && <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />}
-                          <span className={cn("font-medium text-[15px]", !isOptimizedBetter && "text-green-500")}>
-                            {metric.native.toFixed(metric.decimals)} {metric.unit}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="text-right p-5">
-                        <div className="flex items-center justify-end gap-2">
-                          {isOptimizedBetter && <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />}
-                          <span className={cn("font-medium text-[15px]", isOptimizedBetter && "text-green-500")}>
-                            {metric.optimized.toFixed(metric.decimals)} {metric.unit}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="text-right p-5">
-                        <span
-                          className={cn(
-                            "font-semibold text-base",
-                            Number.parseFloat(improvement) > 0 ? "text-green-500" : "text-red-500",
-                          )}
-                        >
-                          {Number.parseFloat(improvement) > 0 ? "+" : ""}
-                          {improvement}%
-                        </span>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {metricsComparison.length > 0 && (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-2">Advanced Metrics Summary</h2>
+            <p className="text-muted-foreground">Direct comparison of Native Code vs Optimized Code performance</p>
           </div>
-        </Card>
-      </div>
+
+          <Card className="overflow-hidden border-border/40 shadow-lg bg-card">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/60 bg-muted/40">
+                    <th className="text-left p-4 font-semibold text-sm text-foreground/90">Metric Name</th>
+                    <th className="text-right p-4 font-semibold text-sm text-foreground/90">Native Code</th>
+                    <th className="text-right p-4 font-semibold text-sm text-foreground/90">Optimized Code</th>
+                    <th className="text-right p-4 font-semibold text-sm text-foreground/90">Improvement</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {metricsComparison.map((metric, index) => {
+                    const betterCode = getBetterCode(metric)
+                    const improvement = calculateImprovement(metric)
+                    const improvementColor = improvement > 0 ? "text-green-500" : "text-red-500"
+
+                    return (
+                      <tr
+                        key={metric.name}
+                        className={cn(
+                          "border-b border-border/40 hover:bg-muted/20 transition-colors",
+                          index === metricsComparison.length - 1 && "border-b-0",
+                        )}
+                      >
+                        <td className="p-4">
+                          <div className="flex flex-col">
+                            <span className="font-semibold text-[15px]">{metric.name}</span>
+                            <span className="text-xs font-mono text-muted-foreground">{metric.technicalName}</span>
+                          </div>
+                        </td>
+                        <td className="text-right p-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {betterCode === "Native" && <Check className="w-4 h-4 text-green-500 flex-shrink-0" />}
+                            <span className="font-medium text-[15px]">
+                              {metric.format(metric.nativeValue)}
+                              {metric.unit}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="text-right p-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {betterCode === "Optimized" && <Check className="w-4 h-4 text-green-500 flex-shrink-0" />}
+                            <span className="font-medium text-[15px]">
+                              {metric.format(metric.optimizedValue)}
+                              {metric.unit}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="text-right p-4">
+                          <span className={cn("font-semibold text-[15px]", improvementColor)}>
+                            {improvement > 0 ? "+" : ""}
+                            {improvement.toFixed(2)}%
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }

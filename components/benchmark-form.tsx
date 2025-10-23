@@ -9,6 +9,14 @@ import { useToast } from "@/hooks/use-toast"
 import { Loader2, Plus, ArrowUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 
+const EXAMPLE_PROMPTS = [
+  "measures perf (latency, tokens/s, VRAM)",
+  "runs unit/eval set checks; flags regressions",
+  "proposes memory-safe tweaks (batch size, grad checkpointing, dtype)",
+  "proposes PyTorch-level optimizations (torch.compile, amp, schedulers)",
+  "merges best suggestions into a single next candidate",
+]
+
 export function BenchmarkForm() {
   const { toast } = useToast()
   const router = useRouter()
@@ -17,6 +25,10 @@ export function BenchmarkForm() {
 
   const maxChars = 2000
   const usagePercentage = Math.round((prompt.length / maxChars) * 100)
+
+  const handleExampleClick = (example: string) => {
+    setPrompt(example)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,42 +47,66 @@ export function BenchmarkForm() {
     // Simulate benchmark execution (2-3 seconds)
     await new Promise((resolve) => setTimeout(resolve, 2500))
 
-    const nativeExecutionTime = 2.5 + Math.random() * 1.5
-    const optimizedExecutionTime = nativeExecutionTime * (0.4 + Math.random() * 0.3)
+    // Speed: tokens_per_second (higher is better)
+    const nativeTokensPerSecond = 150 + Math.random() * 100
+    const optimizedTokensPerSecond = nativeTokensPerSecond * (1.3 + Math.random() * 0.5)
 
-    const nativeTokenCount = Math.floor(800 + Math.random() * 400)
-    const optimizedTokenCount = Math.floor(nativeTokenCount * (0.7 + Math.random() * 0.2))
+    // Accuracy: validation_accuracy (0-1 scale, higher is better)
+    const nativeAccuracy = 0.85 + Math.random() * 0.1
+    const optimizedAccuracy = Math.min(0.99, nativeAccuracy + Math.random() * 0.05)
 
-    const nativeMemory = Math.floor(450 + Math.random() * 200)
-    const optimizedMemory = Math.floor(nativeMemory * (0.5 + Math.random() * 0.3))
+    // Memory Efficiency: peak_gpu_memory_mb (lower is better)
+    const nativeMemory = 800 + Math.random() * 400
+    const optimizedMemory = nativeMemory * (0.6 + Math.random() * 0.2)
 
-    const benchmarkResult = {
+    // Stability: run_to_run_variance (lower is better)
+    const nativeVariance = 0.05 + Math.random() * 0.1
+    const optimizedVariance = nativeVariance * (0.4 + Math.random() * 0.3)
+
+    // Cost Efficiency: throughput_per_dollar (higher is better)
+    const nativeThroughput = 50 + Math.random() * 30
+    const optimizedThroughput = nativeThroughput * (1.5 + Math.random() * 0.5)
+
+    const timestamp = new Date().toISOString()
+    const experimentId = `benchmark-${Date.now()}`
+
+    // Create two separate run entries - one for Native Code, one for Optimized Code
+    const nativeRun = {
       id: Date.now(),
-      experimentId: `benchmark-${Date.now()}`,
+      experimentId,
       prompt,
-      timestamp: new Date().toISOString(),
-      native: {
-        executionTime: nativeExecutionTime,
-        tokenCount: nativeTokenCount,
-        memoryUsage: nativeMemory,
-      },
-      optimized: {
-        executionTime: optimizedExecutionTime,
-        tokenCount: optimizedTokenCount,
-        memoryUsage: optimizedMemory,
-      },
+      timestamp,
+      kernelType: "Native",
+      tokensPerSecond: nativeTokensPerSecond,
+      validationAccuracy: nativeAccuracy,
+      peakGpuMemoryMb: nativeMemory,
+      runToRunVariance: nativeVariance,
+      throughputPerDollar: nativeThroughput,
     }
 
-    // Store in localStorage
-    const existingResults = JSON.parse(localStorage.getItem("benchmark-results") || "[]")
-    existingResults.push(benchmarkResult)
-    localStorage.setItem("benchmark-results", JSON.stringify(existingResults))
+    const optimizedRun = {
+      id: Date.now() + 1,
+      experimentId,
+      prompt,
+      timestamp,
+      kernelType: "Optimized",
+      tokensPerSecond: optimizedTokensPerSecond,
+      validationAccuracy: optimizedAccuracy,
+      peakGpuMemoryMb: optimizedMemory,
+      runToRunVariance: optimizedVariance,
+      throughputPerDollar: optimizedThroughput,
+    }
+
+    // Store both runs in localStorage
+    const existingResults = JSON.parse(localStorage.getItem("benchmark-runs") || "[]")
+    existingResults.push(nativeRun, optimizedRun)
+    localStorage.setItem("benchmark-runs", JSON.stringify(existingResults))
 
     setIsRunning(false)
 
     toast({
       title: "Benchmark Complete",
-      description: "Successfully benchmarked your prompt on both kernels",
+      description: "Successfully benchmarked your prompt on both code implementations",
     })
 
     // Navigate to dashboard
@@ -81,8 +117,26 @@ export function BenchmarkForm() {
 
   return (
     <Card className="max-w-4xl mx-auto border-border/40 shadow-lg overflow-hidden p-0">
+      <div className="px-4 py-3 border-b border-border/30 bg-muted/10">
+        <div className="flex flex-wrap gap-2">
+          {EXAMPLE_PROMPTS.map((example, index) => (
+            <Button
+              key={index}
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => handleExampleClick(example)}
+              disabled={isRunning}
+              className="text-xs font-normal bg-muted/60 hover:bg-muted text-foreground/90 border border-border/30 rounded-full px-3 py-1.5 h-auto"
+            >
+              {example}
+            </Button>
+          ))}
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} className="flex flex-col">
-        <div className="p-4 pb-3">
+        <div className="p-5">
           <Textarea
             placeholder="Ask, Search or Chat..."
             value={prompt}
@@ -123,7 +177,7 @@ export function BenchmarkForm() {
             <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
             <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
             <div className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-            <span>Executing on both kernels...</span>
+            <span>Executing on both code implementations...</span>
           </div>
         )}
       </form>
