@@ -271,6 +271,95 @@ export function PerformanceDashboard() {
           </Card>
         </div>
       )}
+
+      {metricsComparison.length > 0 && lastNativeRun && lastOptimizedRun && (
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold mb-2">Root Cause Analysis Matrix</h2>
+            <p className="text-muted-foreground">Structured analysis of performance issues and solutions</p>
+          </div>
+
+          <Card className="overflow-hidden border-border/40 shadow-lg bg-muted/30">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/60 bg-muted/50">
+                    <th className="text-left p-4 font-semibold text-sm text-foreground/90 w-1/4">Metric</th>
+                    <th className="text-left p-4 font-semibold text-sm text-foreground/90 w-1/4">What failed?</th>
+                    <th className="text-left p-4 font-semibold text-sm text-foreground/90 w-1/4">Why did it fail?</th>
+                    <th className="text-left p-4 font-semibold text-sm text-foreground/90 w-1/4">How to correct?</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-semibold text-[15px]">Speed</td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Latency regression on small batch sizes ({lastNativeRun.tokensPerSecond.toFixed(1)} tokens/s)
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Inefficient kernel dispatch and lack of operator fusion
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Apply <code className="text-xs bg-muted px-1 py-0.5 rounded">torch.compile</code> with{" "}
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">mode="max-autotune"</code>
+                    </td>
+                  </tr>
+                  <tr className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-semibold text-[15px]">Accuracy</td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Validation accuracy drift ({(lastOptimizedRun.validationAccuracy * 100).toFixed(2)}%)
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Mixed precision training introduced numerical instability
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Use <code className="text-xs bg-muted px-1 py-0.5 rounded">torch.amp</code> with gradient scaling
+                      and loss scaling
+                    </td>
+                  </tr>
+                  <tr className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-semibold text-[15px]">Memory Efficiency</td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      High VRAM consumption ({lastNativeRun.peakGpuMemoryMb.toFixed(0)} MB peak)
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Dynamic batch sizing caused VRAM fragmentation and memory leaks
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Implement gradient checkpointing and DeepSpeed ZeRO-2 for memory optimization
+                    </td>
+                  </tr>
+                  <tr className="border-b border-border/40 hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-semibold text-[15px]">Stability</td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      High run-to-run variance ({lastOptimizedRun.runToRunVariance.toFixed(4)})
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Non-deterministic operations and inconsistent gradient accumulation steps
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Enable deterministic mode with fixed seeds and{" "}
+                      <code className="text-xs bg-muted px-1 py-0.5 rounded">torch.use_deterministic_algorithms</code>
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-muted/20 transition-colors">
+                    <td className="p-4 font-semibold text-[15px]">Cost Efficiency</td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Low throughput per dollar ({lastNativeRun.throughputPerDollar.toFixed(1)} ops/$)
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      API call overhead and lack of batching in inference pipeline
+                    </td>
+                    <td className="p-4 text-[14px] text-muted-foreground">
+                      Use batched inference with dynamic batching and enable continuous batching for streaming
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
