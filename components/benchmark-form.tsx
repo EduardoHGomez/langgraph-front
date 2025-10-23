@@ -64,6 +64,20 @@ export function BenchmarkForm() {
 
       const data = await response.json()
 
+      // Validate API response data
+      if (!data || typeof data !== 'object') {
+        throw new Error("Invalid API response: response data is missing or malformed")
+      }
+
+      if (
+        typeof data.tokens_per_second !== 'number' ||
+        typeof data.validation_accuracy !== 'number' ||
+        typeof data.peak_gpu_memory_mb !== 'number' ||
+        typeof data.run_variance !== 'number'
+      ) {
+        throw new Error("Invalid API response: missing required metrics fields")
+      }
+
       // Generate baseline "Native" metrics (slightly worse than optimized)
       const optimizationFactor = 0.7 // Native is ~70% as good as optimized
       const nativeTokensPerSecond = data.tokens_per_second * optimizationFactor
@@ -102,10 +116,17 @@ export function BenchmarkForm() {
         throughputPerDollar: data.throughput_per_gb || data.throughput_per_dollar || 0,
       }
 
-      // Store both runs in localStorage
-      const existingResults = JSON.parse(localStorage.getItem("benchmark-runs") || "[]")
-      existingResults.push(nativeRun, optimizedRun)
-      localStorage.setItem("benchmark-runs", JSON.stringify(existingResults))
+      // Store both runs in localStorage with error handling
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const existingResults = JSON.parse(localStorage.getItem("benchmark-runs") || "[]")
+          existingResults.push(nativeRun, optimizedRun)
+          localStorage.setItem("benchmark-runs", JSON.stringify(existingResults))
+        }
+      } catch (storageError) {
+        console.error("Failed to save to localStorage:", storageError)
+        // Continue execution - localStorage failure shouldn't block navigation
+      }
 
       setIsRunning(false)
 

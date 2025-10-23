@@ -25,8 +25,32 @@ export function PerformanceDashboard() {
 
   useEffect(() => {
     const loadRuns = () => {
-      const storedRuns: BenchmarkRun[] = JSON.parse(localStorage.getItem("benchmark-runs") || "[]")
-      setRuns(storedRuns)
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const storedData = localStorage.getItem("benchmark-runs") || "[]"
+          const storedRuns: BenchmarkRun[] = JSON.parse(storedData)
+
+          // Validate that it's an array
+          if (Array.isArray(storedRuns)) {
+            setRuns(storedRuns)
+          } else {
+            console.error("Invalid benchmark data format in localStorage")
+            setRuns([])
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load benchmark runs from localStorage:", error)
+        // Reset to empty array on error
+        setRuns([])
+        // Try to clear corrupted data
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            localStorage.setItem("benchmark-runs", "[]")
+          }
+        } catch (clearError) {
+          console.error("Failed to clear corrupted localStorage:", clearError)
+        }
+      }
     }
 
     loadRuns()
